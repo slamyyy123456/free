@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>عارض وطابعة صور SVG متعددة</title>
+    <!-- تضمين مكتبة SortableJS للسحب والإفلات -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            background-color: #f0f2f5;
+        }
+        h1 {
+            color: #1c1e21;
+        }
+        #controls {
+            margin-bottom: 20px;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        input[type="file"], button {
+            padding: 10px 15px;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.2s;
+        }
+        #printBtn {
+            background-color: #28a745;
+            color: white;
+            border-color: #28a745;
+        }
+        #printBtn:hover {
+            background-color: #218838;
+        }
+        #clearBtn {
+            background-color: #dc3545;
+            color: white;
+            border-color: #dc3545;
+        }
+        #clearBtn:hover {
+            background-color: #c82333;
+        }
+        #svgContainer {
+            width: 90%;
+            max-width: 1200px;
+            min-height: 200px;
+            border: 2px dashed #ccc;
+            padding: 20px;
+            background-color: #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            flex-wrap: wrap; /* لجعل العناصر تلتف لسطر جديد */
+            gap: 20px; /* مسافة بين الصور */
+            justify-content: center;
+        }
+        .svg-item {
+            width: 300px; /* عرض ثابت لكل بطاقة صورة */
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+        .svg-item .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+            margin-bottom: 10px;
+        }
+        .svg-item .drag-handle {
+            cursor: grab;
+            padding: 5px;
+            color: #888;
+        }
+        .svg-item .remove-btn {
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 20px;
+            color: #aaa;
+            padding: 5px;
+        }
+        .svg-item .remove-btn:hover {
+            color: #dc3545;
+        }
+        .svg-content {
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .svg-content svg {
+            max-width: 100%;
+            height: auto;
+        }
+        
+        /* === قواعد خاصة بالطباعة === */
+        @media print {
+            /* إخفاء كل العناصر غير المرغوب فيها */
+            body > *:not(#svgContainer) {
+                display: none;
+            }
+            
+            #svgContainer {
+                display: block; /* تغيير طريقة العرض لتناسب الطباعة */
+                width: 100%;
+                height: auto;
+                padding: 0;
+                margin: 0;
+                border: none;
+                box-shadow: none;
+                background: none;
+            }
+
+            .svg-item {
+                width: 100%; /* اجعل الصورة تملأ عرض الصفحة */
+                height: 98vh; /* اجعل الصورة تملأ ارتفاع الصفحة تقريبًا */
+                box-shadow: none;
+                border: none;
+                padding: 0;
+                margin: 0;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                /* أهم خاصية: كل صورة تبدأ في صفحة جديدة */
+                page-break-after: always;
+            }
+
+            /* إخفاء رأس البطاقة (مقبض السحب وزر الحذف) عند الطباعة */
+            .svg-item .header {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>عارض وطابعة صور SVG</h1>
+
+    <div id="controls">
+        <label for="svgFiles">اختر ملفات SVG:</label>
+        <input type="file" id="svgFiles" accept="image/svg+xml" multiple>
+        <button id="printBtn">طباعة الكل</button>
+        <button id="clearBtn">مسح الكل</button>
+    </div>
+
+    <div id="svgContainer">
+        <p style="color: #888;">سيتم عرض صور SVG هنا. يمكنك سحبها وإفلاتها لإعادة الترتيب.</p>
+    </div>
+
+    <script>
+        const svgFilesInput = document.getElementById('svgFiles');
+        const svgContainer = document.getElementById('svgContainer');
+        const printBtn = document.getElementById('printBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        
+        // عند اختيار ملفات جديدة
+        svgFilesInput.addEventListener('change', function(event) {
+            // إزالة الرسالة المبدئية عند أول رفع
+            if (svgContainer.querySelector('p')) {
+                svgContainer.innerHTML = '';
+            }
+            
+            // المرور على كل ملف تم اختياره
+            for (const file of event.target.files) {
+                if (file.type === 'image/svg+xml') {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        createSvgItem(e.target.result);
+                    };
+                    reader.readAsText(file);
+                }
+            }
+            // تفريغ قيمة حقل الإدخال للسماح برفع نفس الملفات مرة أخرى
+            event.target.value = null;
+        });
+
+        function createSvgItem(svgContent) {
+            const item = document.createElement('div');
+            item.className = 'svg-item';
+            
+            item.innerHTML = `
+                <div class="header">
+                    <span class="drag-handle">☰</span>
+                    <button class="remove-btn">&times;</button>
+                </div>
+                <div class="svg-content">
+                    ${svgContent}
+                </div>
+            `;
+            
+            // إضافة وظيفة لزر الحذف
+            item.querySelector('.remove-btn').addEventListener('click', () => {
+                item.remove();
+                 // إظهار الرسالة مجددًا إذا كانت الحاوية فارغة
+                if (svgContainer.children.length === 0) {
+                   svgContainer.innerHTML = '<p style="color: #888;">سيتم عرض صور SVG هنا. يمكنك سحبها وإفلاتها لإعادة الترتيب.</p>';
+                }
+            });
+            
+            svgContainer.appendChild(item);
+        }
+
+        // عند الضغط على زر الطباعة
+        printBtn.addEventListener('click', function() {
+            if (svgContainer.children.length > 0 && !svgContainer.querySelector('p')) {
+                window.print();
+            } else {
+                alert('يرجى رفع صور SVG أولاً قبل الطباعة!');
+            }
+        });
+        
+        // عند الضغط على زر مسح الكل
+        clearBtn.addEventListener('click', function() {
+            svgContainer.innerHTML = '<p style="color: #888;">سيتم عرض صور SVG هنا. يمكنك سحبها وإفلاتها لإعادة الترتيب.</p>';
+        });
+
+        // تفعيل خاصية السحب والإفلات على الحاوية
+        new Sortable(svgContainer, {
+            animation: 150, // سرعة الأنيميشن عند السحب
+            handle: '.drag-handle', // تحديد العنصر الذي يمكن السحب منه
+        });
+    </script>
+
+</body>
+</html>
